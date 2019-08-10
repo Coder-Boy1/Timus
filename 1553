@@ -1,0 +1,245 @@
+#include <bits/stdc++.h>
+
+using namespace std;
+
+#define int long long
+
+#define N 100005
+#define root 1
+#define LN 17
+
+vector <int> a[N];
+int baseArray[N], chainInd[N], chainHead[N], posInBase[N], vis[N];
+int level[N], pa[N][LN], otherEnd[N], subsize[N];
+int st[N*6];
+int chainNo, nodes;
+
+void init(int n)
+{
+    for(int i=0; i<N; i++) 
+    {
+        a[i].clear();
+        vis[i]=0;
+        chainHead[i] = -1;
+        for(int j=0; j<LN; j++) 
+        {
+            pa[i][j] = -1;
+        }
+    }
+    chainNo = 1;
+    nodes = 0;
+}
+
+void dfs(int n)
+{
+    vis[n]=1;
+    subsize[n]=1;
+    for(int i=0; i<a[n].size(); i++)
+    {
+        if(vis[a[n][i]]==0)
+        {
+            level[a[n][i]] = level[n] + 1;
+            pa[a[n][i]][0] = n;
+            dfs(a[n][i]);
+            subsize[n]+=subsize[a[n][i]];
+        }
+    }
+}
+
+void HLD(int curNode, int prev) 
+{
+    if(chainHead[chainNo] == -1) 
+    {
+        chainHead[chainNo] = curNode; 
+    }
+    chainInd[curNode] = chainNo;
+    posInBase[curNode] = nodes; // Position of this node in baseArray which we will use in Segtree
+    baseArray[nodes++] = 0;
+
+    int sc = -1, ncost;
+    for(int i=0; i<a[curNode].size(); i++)
+    {
+        if(a[curNode][i] != prev)
+        {
+            if(sc == -1 || subsize[sc] < subsize[a[curNode][i]]) 
+            {
+                sc = a[curNode][i];
+            }
+        }
+    }
+
+    if(sc != -1) 
+    {
+        HLD(sc, curNode);
+    }
+
+    for(int i=0; i<a[curNode].size(); i++)
+    {
+        if(a[curNode][i] != prev)
+        {
+            if(sc != a[curNode][i]) 
+            {
+                chainNo++;   // New chains at each normal node
+                HLD(a[curNode][i], curNode);
+            }
+        }
+    }
+}
+
+int findlca(int u, int v)
+{
+    if(level[u] < level[v]) swap(u,v);
+    int diff = level[u] - level[v];
+    for(int i=0; i<LN; i++) 
+    {
+        if( (diff>>i)&1 ) u = pa[u][i];
+    }
+    if(u == v) 
+        return u;
+    for(int i=LN-1; i>=0; i--)
+    {
+        if(pa[u][i] != pa[v][i])
+        {
+            u = pa[u][i];
+            v = pa[v][i];
+        }
+    }
+    return pa[u][0];
+}
+
+void update_tree(int n, int s, int e, int x, int val) 
+{
+    if(s > x || e < x) 
+    {
+        return;
+    }
+    if(s == x && s == e) 
+    {
+        st[n] += val;
+        return;
+    }
+    int c1 = 2*n , c2 = 2*n +1, m = (s+e)>>1;
+    update_tree(c1, s, m, x, val);
+    update_tree(c2, m+1, e, x, val);
+    st[n] = st[c1] > st[c2] ? st[c1] : st[c2];
+}
+
+
+
+
+void make_tree(int n, int s, int e) 
+{
+    if(s == e) 
+    {
+        st[n] = baseArray[s];
+        return;
+    }
+
+    int c1 = 2*n;
+    int c2 = 2*n + 1;
+    int m = (s+e)>>1;
+    make_tree(c1, s, m);
+    make_tree(c2, m+1, e);
+    st[n] = st[c1] > st[c2] ? st[c1] : st[c2];
+}
+
+int query_tree(int n, int s, int e, int S, int E) 
+{
+    if(s > E || e < S) 
+        return -1;
+    
+    if(s >= S && e <= E) 
+        return st[n];
+    
+    int c1 = 2*n, c2 = 2*n + 1, m = (s+e)>>1;
+    int ans1 = query_tree(c1, s, m, S, E);
+    int ans2 = query_tree(c2, m+1, e, S, E);
+    return max(ans1, ans2);
+}
+
+int Query_Up(int u, int v) 
+{
+    
+    int uchain, vchain = chainInd[v], ans = 0;
+    while(1) 
+    {
+        uchain = chainInd[u];
+        if(uchain == vchain)
+        {
+            ans = max(ans, query_tree(1, 0, nodes-1, posInBase[v], posInBase[u]));
+            break;
+        }
+
+        ans = max(ans, query_tree(1, 0, nodes-1, posInBase[chainHead[uchain]], posInBase[u]));
+        u = chainHead[uchain]; // move u to u's chainHead
+        u = pa[u][0]; //Then move to its parent, that means we changed chains
+    }
+    return ans;
+}
+
+void HLD_Query(int u, int v)
+{
+    int lca = findlca(u, v);
+
+    int ans = max( Query_Up(u, lca), Query_Up(v, lca));
+    cout<<ans<<endl;
+}
+
+void HLD_Update(int u, int val)
+{
+    update_tree(1, 0, nodes-1, posInBase[u], val);
+}
+
+int32_t main()
+{
+    int n;
+    cin>>n;
+
+    
+    init(n);
+    for(int i=0; i<n-1; i++)
+    {
+        int u, v;
+        cin>>u>>v;
+        a[u].push_back(v);
+        a[v].push_back(u);
+    }
+
+    
+    dfs(root);         
+    HLD(root, 0);          // We decomposed the tree and created baseArray
+    make_tree(1, 0, nodes-1);       // We use baseArray and construct the needed segment tree
+
+    for(int i=1; i<LN; i++)
+    {
+        for(int j=1; j<=n; j++)
+        {
+                if(pa[j][i-1] != -1)
+                {
+                    pa[j][i] = pa[pa[j][i-1]][i-1];
+                }
+        }
+    }
+    
+    int q;
+    cin>>q;
+
+    while(q--)
+    {
+        char c;
+        cin>>c;
+        int u, v;
+        cin>>u>>v;
+        if(c=='I')
+        {      
+            HLD_Update(u, v);
+           // HLD_Query(u, u);
+        }
+        else 
+        {
+            HLD_Query(u, v);
+        }
+    }
+
+    return 0;
+}
